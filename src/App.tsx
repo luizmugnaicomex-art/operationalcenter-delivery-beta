@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  LineChart, Line, ComposedChart, Area, LabelList, Cell, ReferenceLine
+  LineChart, Line, ComposedChart, Area, ReferenceLine, Cell, LabelList
 } from 'recharts';
 import { 
   TrendingUp, TrendingDown, Package, CheckCircle, Clock, Calendar, 
-  Upload, AlertCircle, LayoutDashboard, FileSpreadsheet, AlertTriangle
+  Upload, AlertTriangle, LayoutDashboard, FileSpreadsheet, ShieldAlert,
+  Flame, Info, AlertCircle
 } from 'lucide-react';
 
 // Initial data fallback
@@ -20,22 +21,20 @@ const INITIAL_DATA = [
   { date: '2026-03-31', day: 'Tue', scheduled: 199, totalBacklog: 207, actual: 121, postponed: 86, efficiency: 58.5 }
 ];
 
-const KpiCard = ({ title, value, icon: Icon, color, trend, critical }: any) => (
-  <div className={`bg-white p-6 rounded-2xl border ${critical ? 'border-rose-500 shadow-rose-100' : 'border-slate-100'} shadow-sm transition-all hover:shadow-md relative overflow-hidden`}>
-    {critical && <div className="absolute top-0 left-0 w-full h-1.5 bg-rose-600 animate-pulse" />}
+const KpiCard = ({ title, value, icon: Icon, color, status }: any) => (
+  <div className={`bg-white p-6 rounded-2xl border-2 shadow-sm transition-all hover:shadow-md ${status === 'critical' ? 'border-red-500 bg-red-50 animate-pulse' : 'border-slate-100'}`}>
     <div className="flex items-center justify-between mb-4">
       <div className={`p-3 rounded-xl ${color}`}>
         <Icon className="w-6 h-6 text-white" />
       </div>
-      {trend !== undefined && (
-        <span className={`flex items-center text-sm font-bold ${trend > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-          {trend > 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-          {Math.abs(trend)}%
+      {status === 'critical' && (
+        <span className="flex items-center text-xs font-black uppercase text-red-600 bg-red-100 px-2 py-1 rounded">
+          <ShieldAlert className="w-3 h-3 mr-1" /> Critical
         </span>
       )}
     </div>
-    <h3 className={`text-sm font-bold mb-1 ${critical ? 'text-rose-600' : 'text-slate-500'}`}>{title}</h3>
-    <p className={`text-3xl font-black ${critical ? 'text-rose-700' : 'text-slate-900'}`}>{value}</p>
+    <h3 className="text-slate-500 text-sm font-bold mb-1 uppercase tracking-tighter">{title}</h3>
+    <p className={`text-3xl font-black ${status === 'critical' ? 'text-red-700' : 'text-slate-900'}`}>{value}</p>
   </div>
 );
 
@@ -51,7 +50,6 @@ const App = () => {
     reader.onload = (e) => {
       const content = e.target?.result as string;
       const lines = content.split('\n').map(line => line.split(','));
-
       if (lines.length < 6) return;
 
       const days = lines[0];
@@ -70,7 +68,6 @@ const App = () => {
         const totalBacklog = parseInt(backlogRow[i]) || 0;
         const actual = parseInt(actualRow[i]) || 0;
         const postponed = parseInt(postponedRow[i]) || 0;
-        
         const efficiency = totalBacklog > 0 ? ((actual / totalBacklog) * 100).toFixed(1) : 0;
 
         parsedData.push({
@@ -83,10 +80,7 @@ const App = () => {
           efficiency: parseFloat(efficiency as string)
         });
       }
-
-      if (parsedData.length > 0) {
-        setData(parsedData);
-      }
+      if (parsedData.length > 0) setData(parsedData);
     };
     reader.readAsText(file);
   };
@@ -99,179 +93,201 @@ const App = () => {
       ? (data.reduce((acc, curr) => acc + curr.efficiency, 0) / data.length).toFixed(1)
       : 0;
     
-    return { totalScheduled, totalActual, totalPostponed, avgEfficiency: parseFloat(avgEfficiency as string) };
+    return { totalScheduled, totalActual, totalPostponed, avgEfficiency };
   }, [data]);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
+      const effEntry = payload.find((p: any) => p.name === 'efficiency');
+      const eff = effEntry ? effEntry.value : 0;
+      const isBad = eff < 65;
       return (
-        <div className="bg-white p-4 border border-slate-200 rounded-lg shadow-xl">
-          <p className="font-bold text-slate-900 mb-2 border-b border-slate-50 pb-1">{label}</p>
+        <div className={`p-4 border-2 rounded-lg shadow-2xl ${isBad ? 'bg-red-900 text-white border-red-500' : 'bg-white text-slate-900 border-slate-200'}`}>
+          <p className="font-black mb-2 border-b border-white/20 pb-1 text-lg">{label}</p>
           {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center justify-between gap-4 text-sm mb-1">
-              <span className="text-slate-500 capitalize">{entry.name}:</span>
-              <span className="font-bold" style={{ color: entry.color }}>
+            <div key={index} className="flex items-center justify-between gap-6 text-sm mb-1">
+              <span className="opacity-80 font-bold uppercase">{entry.name}:</span>
+              <span className="font-black">
                 {entry.name === 'efficiency' ? `${entry.value}%` : entry.value}
               </span>
             </div>
           ))}
+          {isBad && (
+            <div className="mt-2 text-[10px] font-black uppercase bg-red-600 px-2 py-1 text-center animate-pulse">
+              Performance Failure Detected
+            </div>
+          )}
         </div>
       );
     }
     return null;
   };
 
-  const isChaos = totals.avgEfficiency < 75 || totals.totalPostponed > totals.totalScheduled * 0.2;
-
   return (
-    <div className={`min-h-screen p-4 md:p-8 font-sans transition-colors duration-500 ${isChaos ? 'bg-rose-50/30' : 'bg-slate-50'} text-slate-900`}>
-      <input 
-        type="file" 
-        ref={fileInputRef}
-        className="hidden" 
-        accept=".csv,.xlsx" 
-        onChange={handleFileUpload}
-      />
+    <div className="min-h-screen bg-slate-950 p-4 md:p-8 font-sans text-slate-100">
+      <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
 
+      {/* Chaos Alert Banner */}
+      {parseFloat(totals.avgEfficiency as string) < 75 && (
+        <div className="max-w-7xl mx-auto mb-6 bg-red-600 text-white px-6 py-3 rounded-xl flex items-center justify-between animate-pulse shadow-[0_0_20px_rgba(220,38,38,0.5)]">
+          <div className="flex items-center gap-3">
+            <Flame className="w-6 h-6" />
+            <span className="font-black uppercase tracking-widest text-lg">System Alert: Operational Chaos Detected</span>
+          </div>
+          <div className="hidden md:block font-bold">Backlog is exceeding capacity thresholds</div>
+        </div>
+      )}
+
+      {/* Header */}
       <header className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <div className={`p-2 rounded-lg ${isChaos ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-blue-100 text-blue-600'}`}>
-              {isChaos ? <AlertTriangle className="w-6 h-6" /> : <LayoutDashboard className="w-6 h-6" />}
+            <div className="bg-red-600 p-2 rounded-lg shadow-lg shadow-red-900/50">
+                <AlertTriangle className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Delivery Operations Center</h1>
-            {isChaos && (
-              <span className="px-3 py-1 bg-rose-600 text-white text-xs font-bold rounded-full animate-pulse shadow-sm">
-                CRITICAL STATUS
-              </span>
-            )}
+            <h1 className="text-3xl font-black text-white uppercase italic tracking-tighter">Ops Crisis Dashboard</h1>
           </div>
-          <p className="text-slate-500 font-medium">Live data visualization for logistics performance</p>
+          <p className="text-slate-400 font-bold">Real-time Backlog Escalation Monitoring</p>
         </div>
         <div className="flex items-center gap-3">
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm cursor-pointer"
+            className="px-6 py-3 bg-white text-slate-950 rounded-xl text-sm font-black hover:bg-red-500 hover:text-white transition-all flex items-center gap-2 shadow-xl cursor-pointer"
           >
             <Upload className="w-4 h-4" />
-            Upload CSV
-          </button>
-          <button className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-800 transition-colors shadow-lg flex items-center gap-2 cursor-pointer">
-            <FileSpreadsheet className="w-4 h-4" />
-            Export Report
+            UPLOAD NEW CRISIS DATA
           </button>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* KPI Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <KpiCard 
-            title="Total Scheduled" 
+            title="Total Demand" 
             value={totals.totalScheduled} 
             icon={Package} 
             color="bg-slate-800" 
           />
           <KpiCard 
-            title="Actual Deliveries" 
+            title="Completed" 
             value={totals.totalActual} 
             icon={CheckCircle} 
-            color={totals.totalActual < totals.totalScheduled * 0.8 ? "bg-rose-500" : "bg-emerald-500"} 
-            critical={totals.totalActual < totals.totalScheduled * 0.8}
+            color="bg-emerald-600" 
           />
           <KpiCard 
-            title="Avg. Efficiency" 
+            title="Operational Health" 
             value={`${totals.avgEfficiency}%`} 
-            icon={totals.avgEfficiency < 75 ? TrendingDown : TrendingUp} 
-            color={totals.avgEfficiency < 75 ? "bg-rose-600" : "bg-indigo-500"} 
-            critical={totals.avgEfficiency < 75}
+            icon={TrendingDown} 
+            color={parseFloat(totals.avgEfficiency as string) < 70 ? "bg-red-600" : "bg-indigo-600"} 
+            status={parseFloat(totals.avgEfficiency as string) < 70 ? "critical" : ""}
           />
           <KpiCard 
-            title="Total Postponed" 
+            title="Total Failures (Postponed)" 
             value={totals.totalPostponed} 
-            icon={AlertCircle} 
-            color={totals.totalPostponed > 100 ? "bg-rose-600" : "bg-amber-500"} 
-            critical={totals.totalPostponed > 100}
+            icon={Clock} 
+            color="bg-rose-700" 
+            status={totals.totalPostponed > 100 ? "critical" : ""}
           />
         </div>
 
+        {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className={`lg:col-span-2 bg-white p-6 rounded-2xl border ${isChaos ? 'border-rose-200 shadow-rose-100' : 'border-slate-100'} shadow-sm`}>
+          {/* Backlog vs Reality Chart */}
+          <div className="lg:col-span-2 bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-inner">
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h2 className="text-lg font-black text-slate-900">Volume Performance</h2>
-                <p className="text-sm font-medium text-slate-500">Scheduled vs Actual Deliveries</p>
+                <h2 className="text-xl font-black uppercase text-white">Backlog Accumulation</h2>
+                <p className="text-slate-500 text-sm font-bold italic">Gap between load and capacity</p>
               </div>
-              <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-wider">
-                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-slate-300"></span>Scheduled</div>
-                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-rose-500"></span>Actual (Critical)</div>
-                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-400"></span>Actual (Good)</div>
+              <div className="flex items-center gap-4 text-xs font-black uppercase tracking-tighter flex-wrap justify-end">
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-600"></span>Total Load</div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-slate-400"></span>Scheduled</div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500"></span>Delivered</div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-orange-500"></span>Postponed</div>
               </div>
             </div>
-            <div className="h-[380px]">
+            <div className="h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={data} margin={{ top: 30, right: 10, left: -20, bottom: 0 }}>
+                <ComposedChart data={data} margin={{ top: 35, right: 20, left: -20, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorBacklog" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15}/>
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                    <linearGradient id="chaosGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#dc2626" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
                   <XAxis 
                     dataKey="date" 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} 
+                    tick={{ fill: '#475569', fontSize: 11, fontWeight: 900 }} 
                     dy={10}
                     tickFormatter={(str) => {
-                        const parts = str.split('-');
-                        return parts.length > 2 ? `${parts[1]}/${parts[2]}` : str;
+                      if (typeof str !== 'string') return '';
+                      const p = str.split('-');
+                      return p.length > 2 ? `${p[1]}/${p[2]}` : str;
                     }}
                   />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 12 }} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="totalBacklog" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" fill="url(#colorBacklog)" name="Total Backlog" />
-                  <Bar dataKey="scheduled" name="scheduled" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={28}>
-                    <LabelList dataKey="scheduled" position="top" fill="#64748b" fontSize={12} fontWeight="bold" />
+                  <Area type="monotone" dataKey="totalBacklog" stroke="#ef4444" strokeWidth={4} fill="url(#chaosGradient)" name="Total Load">
+                    <LabelList dataKey="totalBacklog" position="top" fill="#ef4444" fontSize={14} fontWeight={900} />
+                  </Area>
+                  <Bar dataKey="scheduled" name="Scheduled" fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={14}>
+                    <LabelList dataKey="scheduled" position="top" fill="#94a3b8" fontSize={12} fontWeight={900} />
                   </Bar>
-                  <Bar dataKey="actual" name="actual" radius={[4, 4, 0, 0]} barSize={28}>
-                    {data.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.efficiency < 70 ? '#ef4444' : '#34d399'} />
-                    ))}
-                    <LabelList dataKey="actual" position="top" fill="#0f172a" fontSize={13} fontWeight="black" />
+                  <Bar dataKey="actual" name="Delivery" fill="#10b981" radius={[4, 4, 0, 0]} barSize={14}>
+                    <LabelList dataKey="actual" position="top" fill="#10b981" fontSize={12} fontWeight={900} />
+                  </Bar>
+                  <Bar dataKey="postponed" name="Postponed" fill="#f97316" radius={[4, 4, 0, 0]} barSize={14}>
+                    <LabelList dataKey="postponed" position="top" fill="#f97316" fontSize={12} fontWeight={900} />
                   </Bar>
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          <div className={`bg-white p-6 rounded-2xl border ${isChaos ? 'border-rose-200 shadow-rose-100' : 'border-slate-100'} shadow-sm`}>
+          {/* Efficiency Trend Chart */}
+          <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-inner">
             <div className="mb-8">
-              <h2 className="text-lg font-black text-slate-900">Efficiency Trend</h2>
-              <p className="text-sm font-medium text-slate-500">Fulfillment percentage over time</p>
+              <h2 className="text-xl font-black uppercase text-white">Efficiency Drop</h2>
+              <p className="text-sm text-red-500 font-black animate-pulse uppercase tracking-tighter">Warning: Target Threshold 85%</p>
             </div>
-            <div className="h-[380px]">
+            <div className="h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data} margin={{ top: 30, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <LineChart data={data} margin={{ top: 30, right: 20, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
                   <XAxis 
                     dataKey="day" 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} 
+                    tick={{ fill: '#475569', fontSize: 12, fontWeight: 900 }} 
                   />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} unit="%" />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 12 }} unit="%" />
                   <Tooltip content={<CustomTooltip />} />
-                  <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="3 3" strokeWidth={2} label={{ position: 'insideTopLeft', value: 'CRITICAL THRESHOLD (70%)', fill: '#ef4444', fontSize: 11, fontWeight: 'bold' }} />
+                  <ReferenceLine y={85} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'DANGER', fill: '#ef4444', fontSize: 10, fontWeight: 900, position: 'insideTopRight' }} />
                   <Line 
-                    type="monotone" 
+                    type="step" 
                     dataKey="efficiency" 
-                    stroke={totals.avgEfficiency < 75 ? '#ef4444' : '#6366f1'} 
+                    name="efficiency"
                     strokeWidth={4} 
-                    dot={{ r: 5, fill: totals.avgEfficiency < 75 ? '#ef4444' : '#6366f1', strokeWidth: 2, stroke: '#fff' }}
-                    activeDot={{ r: 7, strokeWidth: 0 }}
+                    dot={(props: any) => {
+                        const { cx, cy, payload } = props;
+                        if (!payload) return null;
+                        const isCritical = payload.efficiency < 70;
+                        return (
+                          <circle 
+                            key={`dot-${payload.date}`}
+                            cx={cx} cy={cy} r={isCritical ? 6 : 4} 
+                            fill={isCritical ? "#ef4444" : "#6366f1"} 
+                            stroke="#fff" strokeWidth={2}
+                          />
+                        );
+                    }}
+                    stroke="#6366f1"
                   >
-                    <LabelList dataKey="efficiency" position="top" fill="#0f172a" fontSize={12} fontWeight="black" formatter={(val: any) => `${val}%`} />
+                    <LabelList dataKey="efficiency" position="top" fill="#818cf8" fontSize={14} fontWeight={900} formatter={(val: any) => `${val}%`} />
                   </Line>
                 </LineChart>
               </ResponsiveContainer>
@@ -279,60 +295,55 @@ const App = () => {
           </div>
         </div>
 
-        <div className={`bg-white rounded-2xl border ${isChaos ? 'border-rose-200 shadow-rose-100' : 'border-slate-100'} shadow-sm overflow-hidden`}>
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-            <h2 className="text-lg font-black text-slate-900">Detailed Activity Logs</h2>
-            {isChaos && <span className="text-xs font-bold text-rose-600 bg-rose-50 px-3 py-1 rounded-full">Review required for highlighted rows</span>}
+        {/* Chaos Table View */}
+        <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden">
+          <div className="p-6 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
+            <h2 className="text-xl font-black uppercase text-white flex items-center gap-2">
+                <AlertCircle className="text-red-500" /> Damage Assessment Log
+            </h2>
+            <div className="text-[10px] font-black uppercase text-slate-500 bg-slate-800 px-3 py-1 rounded-full">
+                Live Data Feed
+            </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 text-slate-500 text-xs font-black uppercase tracking-wider">
-                  <th className="px-6 py-4">Date</th>
-                  <th className="px-6 py-4 text-center">Original Schedule</th>
-                  <th className="px-6 py-4 text-center">Backlog + Daily</th>
-                  <th className="px-6 py-4 text-center">Delivered</th>
-                  <th className="px-6 py-4 text-center">Postponed</th>
-                  <th className="px-6 py-4 text-right">Efficiency</th>
+                <tr className="bg-slate-800/50 text-slate-400 text-xs font-black uppercase tracking-widest">
+                  <th className="px-6 py-5">Incident Date</th>
+                  <th className="px-6 py-5 text-center">Load</th>
+                  <th className="px-6 py-5 text-center">Success</th>
+                  <th className="px-6 py-5 text-center text-red-500">Failed (Postponed)</th>
+                  <th className="px-6 py-5 text-right">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800">
                 {data.map((row, idx) => {
-                  const isRowCritical = row.efficiency < 70 || row.postponed > 50;
+                  const isCritical = row.efficiency < 70;
                   return (
-                    <tr key={idx} className={`transition-colors ${isRowCritical ? 'bg-rose-50/50 hover:bg-rose-100/50' : 'hover:bg-slate-50'}`}>
-                      <td className="px-6 py-4 text-sm">
-                        <div className={`font-bold ${isRowCritical ? 'text-rose-900' : 'text-slate-900'}`}>{row.date}</div>
-                        <div className={`text-xs uppercase font-bold ${isRowCritical ? 'text-rose-500' : 'text-slate-400'}`}>{row.day}</div>
+                    <tr key={idx} className={`${isCritical ? 'bg-red-950/20 hover:bg-red-950/40' : 'hover:bg-slate-800/40'} transition-all`}>
+                      <td className="px-6 py-5">
+                        <div className={`font-black ${isCritical ? 'text-red-400' : 'text-slate-100'}`}>{row.date}</div>
+                        <div className="text-[10px] text-slate-500 font-black uppercase tracking-tighter">{row.day}</div>
                       </td>
-                      <td className="px-6 py-4 text-center text-sm font-medium text-slate-600">{row.scheduled}</td>
-                      <td className="px-6 py-4 text-center text-sm">
-                          <span className={`px-2.5 py-1 rounded-md text-xs font-black ${isRowCritical ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
-                              {row.totalBacklog}
-                          </span>
+                      <td className="px-6 py-5 text-center text-slate-300 font-bold">{row.totalBacklog}</td>
+                      <td className="px-6 py-5 text-center font-black text-emerald-400">{row.actual}</td>
+                      <td className="px-6 py-5 text-center">
+                        <div className={`flex items-center justify-center gap-1 font-black ${row.postponed > 50 ? 'text-red-500 animate-bounce' : 'text-orange-500'}`}>
+                          {row.postponed > 50 && <ShieldAlert className="w-4 h-4" />}
+                          {row.postponed}
+                        </div>
                       </td>
-                      <td className={`px-6 py-4 text-center text-sm font-black ${isRowCritical ? 'text-rose-600' : 'text-emerald-600'}`}>{row.actual || 0}</td>
-                      <td className="px-6 py-4 text-center text-sm">
-                        {row.postponed > 50 ? (
-                          <div className="flex items-center justify-center gap-1.5 text-rose-600 font-black bg-rose-100 py-1 px-2 rounded-md w-fit mx-auto">
-                            <AlertCircle className="w-4 h-4" />
-                            {row.postponed}
-                          </div>
-                        ) : (
-                          <span className="text-slate-500 font-medium">
-                            {row.postponed || 0}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <div className="w-16 bg-slate-200 h-2 rounded-full overflow-hidden hidden sm:block">
-                            <div 
-                              className={`h-full rounded-full ${row.efficiency > 80 ? 'bg-emerald-500' : row.efficiency > 70 ? 'bg-amber-500' : 'bg-rose-600'}`}
-                              style={{ width: `${Math.min(row.efficiency, 100)}%` }}
-                            />
-                          </div>
-                          <span className={`text-sm font-black ${isRowCritical ? 'text-rose-600' : 'text-slate-700'}`}>{row.efficiency}%</span>
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex flex-col items-end">
+                            <span className={`text-sm font-black ${isCritical ? 'text-red-500' : 'text-indigo-400'}`}>
+                                {isCritical ? 'FAILED' : 'SUB-OPTIMAL'} ({row.efficiency}%)
+                            </span>
+                            <div className="w-24 bg-slate-800 h-1 rounded-full mt-1 overflow-hidden">
+                                <div 
+                                    className={`h-full ${isCritical ? 'bg-red-500' : 'bg-indigo-500'}`}
+                                    style={{ width: `${Math.min(row.efficiency, 100)}%` }}
+                                />
+                            </div>
                         </div>
                       </td>
                     </tr>
@@ -344,8 +355,8 @@ const App = () => {
         </div>
       </main>
 
-      <footer className="max-w-7xl mx-auto mt-12 mb-8 text-center text-slate-400 text-xs font-medium">
-        <p>© 2026 Logistics Hub AI • Interactive Delivery Dashboard</p>
+      <footer className="max-w-7xl mx-auto mt-12 mb-8 text-center text-slate-600 text-xs font-black uppercase tracking-[0.2em]">
+        <p>Warning: System at critical load capacity. Operational failure imminent.</p>
       </footer>
     </div>
   );
